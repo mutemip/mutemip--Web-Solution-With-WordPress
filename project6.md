@@ -1,7 +1,7 @@
 ## Web Solution With WordPress
 Launch an EC2 instance that will serve as "Web Server"
 
-### Step 1: Prepare web server
+## Step 1: Prepare web server
 1. Launch an EC2 instance that will serve as "Web Server". Create 3 volumes in the same AZ as your Web Server EC2, each of 10 GiB.
 ![volumes](https://user-images.githubusercontent.com/64135078/197396327-98f83fcb-2368-4ef4-ad71-86c2a10f27b6.png)
 
@@ -87,9 +87,95 @@ Test the configuration and reload the daemon
  ![dfh](https://user-images.githubusercontent.com/64135078/197419421-8715f71d-f47d-4238-b226-2227d27bac94.png)
 
  
+## Step 2: Prepare the Database Server
+Launch a second RedHat EC2 instance that will have a role – ‘DB Server’
+Repeat the same steps as for the Web Server, but instead of apps-lv create db-lv and mount it to /db directory instead of /var/www/html/.
 
+## Step 3 — Install WordPress on your Web Server EC2
+1. Update the repository
 
+`sudo yum -y update`
+2. Install wget, Apache and it’s dependencies
 
+`sudo yum -y install wget httpd php php-mysqlnd php-fpm php-json`
+3. Start Apache
+
+```
+sudo systemctl enable httpd
+sudo systemctl start httpd
+```
+4. To install PHP and it’s depemdencies
+```
+sudo yum install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+sudo yum install yum-utils http://rpms.remirepo.net/enterprise/remi-release-8.rpm
+sudo yum module list php
+sudo yum module reset php
+sudo yum module enable php:remi-7.4
+sudo yum install php php-opcache php-gd php-curl php-mysqlnd
+sudo systemctl start php-fpm
+sudo systemctl enable php-fpm
+setsebool -P httpd_execmem 1
+```
+5. Restart Apache
+
+`sudo systemctl restart httpd`
+6. Download wordpress and copy wordpress to **var/www/html**
+```
+  mkdir wordpress
+  cd   wordpress
+  sudo wget http://wordpress.org/latest.tar.gz
+  sudo tar xzvf latest.tar.gz
+  sudo rm -rf latest.tar.gz
+  cp wordpress/wp-config-sample.php wordpress/wp-config.php
+  cp -R wordpress /var/www/html/
+```
+7. Configure SELinux Policies
+```
+  sudo chown -R apache:apache /var/www/html/wordpress
+  sudo chcon -t httpd_sys_rw_content_t /var/www/html/wordpress -R
+  sudo setsebool -P httpd_can_network_connect=1
+```
+
+## Step 4 — Install MySQL on your DB Server EC2
+
+```
+sudo yum update
+sudo yum install mysql-server
+```
+Verify that the service is up and running by using `sudo systemctl status mysqld` , if it is not running, restart the service and enable it so it will be running even after reboot:
+```
+sudo systemctl restart mysqld
+sudo systemctl enable mysqld
+```
+## Step 5 — Configure DB to work with WordPress
+```
+sudo mysql
+CREATE DATABASE wordpress;
+CREATE USER `myuser`@`<Web-Server-Private-IP-Address>` IDENTIFIED BY 'mypass';
+GRANT ALL ON wordpress.* TO 'myuser'@'<Web-Server-Private-IP-Address>';
+FLUSH PRIVILEGES;
+SHOW DATABASES;
+exit
+```
+
+## Step 6 — Configure WordPress to connect to remote database
+
+ open MySQL port 3306
+ For extra security, you shall allow access to the DB server ONLY from your Web Server’s IP address, so in the Inbound Rule configuration specify source as /32
+ 
+1. Install MySQL client and test that you can connect from your Web Server to your DB server by using `mysql-client`
+```
+sudo yum install mysql
+sudo mysql -u admin -p -h <DB-Server-Private-IP-address>
+```
+2. Verify if you can successfully execute `SHOW DATABASES;` command and see a list of existing databases.
+![web-db](https://user-images.githubusercontent.com/64135078/197424137-dc5d4c23-f244-4984-8629-ff4a7158e6dc.png)
+3. Change permissions and configuration so Apache could use WordPress:
+4. Enable TCP port 80 in Inbound Rules configuration for your Web Server EC2 (enable from everywhere 0.0.0.0/0 or from your workstation’s IP)
+5. Try to access from your browser the link to your WordPress `http://<Web-Server-Public-IP-Address>/wordpress/`
+![wordp](https://user-images.githubusercontent.com/64135078/197425025-8f3d8cc9-91b1-440b-b59e-2c326e25ef1c.png)
+
+![dashboard](https://user-images.githubusercontent.com/64135078/197425103-7597732e-d4e4-4748-a481-21db5b8183b4.png)
 
 
 
